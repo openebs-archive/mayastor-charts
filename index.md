@@ -10,7 +10,7 @@
 ### Add the repository
 
 ```bash
-helm repo add mayastor https://openebs.github.io/mayastor-extensions/ 
+helm repo add mayastor https://openebs.github.io/mayastor-charts/ 
 ```
 
 ### Install Mayastor
@@ -24,4 +24,4 @@ helm install mayastor mayastor/mayastor -n mayastor --create-namespace
 helm install mayastor mayastor/mayastor -n mayastor --create-namespace --set="etcd.replicaCount=1,etcd.persistence.storageClass=manual,etcd.livenessProbe.initialDelaySeconds=5,etcd.readinessProbe.initialDelaySeconds=5,loki-stack.loki.persistence.storageClassName=manual"
 ```
 
-For more details on installing Mayastor please see the [chart's README](https://github.com/openebs/mayastor-extensions/blob/develop/chart/README.md).
+For more details on installing Mayastor please see the [chart's README](https://github.com/openebs/mayastor-chart/blob/develop/chart/README.md).
