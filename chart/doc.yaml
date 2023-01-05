@@ -4,7 +4,7 @@ project:
   url: https://openebs.io/mayastor
   description: Fast NVMe backed storage for enterprise users on Kubernetes
 repository:
-  url: https://openebs.github.io/mayastor-extensions/
+  url: https://openebs.github.io/mayastor-charts/
   name: mayastor
 chart:
   name: mayastor
