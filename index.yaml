@@ -23,6 +23,6 @@ entries:
     name: mayastor
     type: application
     urls:
-    - https://openebs.github.io/mayastor-extensions/mayastor-0.0.0.tgz
+    - https://openebs.github.io/mayastor-charts/mayastor-0.0.0.tgz
     version: 0.0.0
 generated: "2023-01-04T09:39:45.249761386Z"
