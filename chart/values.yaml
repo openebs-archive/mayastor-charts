@@ -15,6 +15,16 @@ image:
 nodeSelector:
   kubernetes.io/arch: amd64
 
+earlyEvictionTolerations:
+  - effect: NoExecute
+    key: node.kubernetes.io/unreachable
+    operator: Exists
+    tolerationSeconds: 5
+  - effect: NoExecute
+    key: node.kubernetes.io/not-ready
+    operator: Exists
+    tolerationSeconds: 5
+
 base:
   # request timeout for rest & core agents
   default_req_timeout: 5s
@@ -27,24 +37,22 @@ base:
     containers:
       - name: agent-core-grpc-probe
         image: busybox:latest
-        command: [ 'sh', '-c', 'trap "exit 1" TERM; until nc -vzw 5 {{ .Release.Name }}-agent-core 50051; do date; echo "Waiting for agent-core-grpc services..."; sleep 1; done;' ]
+        command: ['sh', '-c', 'trap "exit 1" TERM; until nc -vzw 5 {{ .Release.Name }}-agent-core 50051; do date; echo "Waiting for agent-core-grpc services..."; sleep 1; done;']
       - name: etcd-probe
         image: busybox:latest
-        command: [ 'sh', '-c', 'trap "exit 1" TERM; until nc -vzw 5 {{ .Release.Name }}-etcd {{ .Values.etcd.service.port }}; do date; echo "Waiting for etcd..."; sleep 1; done;' ]
-
+        command: ['sh', '-c', 'trap "exit 1" TERM; until nc -vzw 5 {{ .Release.Name }}-etcd {{ .Values.etcd.service.port }}; do date; echo "Waiting for etcd..."; sleep 1; done;']
   initHaNodeContainers:
     enabled: true
     containers:
       - name: agent-cluster-grpc-probe
         image: busybox:latest
-        command: [ 'sh', '-c', 'trap "exit 1" TERM; until nc -vzw 5 {{ .Release.Name }}-agent-core 50052; do date; echo "Waiting for agent-cluster-grpc services..."; sleep 1; done;' ]
-
+        command: ['sh', '-c', 'trap "exit 1" TERM; until nc -vzw 5 {{ .Release.Name }}-agent-core 50052; do date; echo "Waiting for agent-cluster-grpc services..."; sleep 1; done;']
   initCoreContainers:
     enabled: true
     containers:
       - name: etcd-probe
         image: busybox:latest
-        command: [ 'sh', '-c', 'trap "exit 1" TERM; until nc -vzw 5 {{ .Release.Name }}-etcd {{ .Values.etcd.service.port }}; do date; echo "Waiting for etcd..."; sleep 1; done;' ]
+        command: ['sh', '-c', 'trap "exit 1" TERM; until nc -vzw 5 {{ .Release.Name }}-etcd {{ .Values.etcd.service.port }}; do date; echo "Waiting for etcd..."; sleep 1; done;']
   # docker-secrets required to pull images if the container registry from image.Registry is protected
   imagePullSecrets:
     # enable imagePullSecrets for pulling Mayastor container images
@@ -70,8 +78,7 @@ base:
       initContainer:
         - name: jaeger-probe
           image: busybox:latest
-          command: [ 'sh', '-c', 'trap "exit 1" TERM; until nc -vzw 5 -u {{.Values.base.jaeger.agent.name}} {{.Values.base.jaeger.agent.port}}; do date; echo "Waiting for jaeger..."; sleep 1; done;' ]
-
+          command: ['sh', '-c', 'trap "exit 1" TERM; until nc -vzw 5 -u {{.Values.base.jaeger.agent.name}} {{.Values.base.jaeger.agent.port}}; do date; echo "Waiting for jaeger..."; sleep 1; done;']
   initRestContainer:
     enabled: true
     initContainer:
@@ -156,6 +163,8 @@ apis:
   rest:
     # logLevel for the rest crate
     logLevel: info
+    # number of replicas of rest
+    replicaCount: 1
     resources:
       limits:
         # cpu limits for rest
@@ -171,7 +180,7 @@ apis:
 csi:
   image:
     # image registry to pull all CSI Sidecar images
-    registry: k8s.gcr.io
+    registry: registry.k8s.io
     # image registry's namespace
     repo: sig-storage
     # imagePullPolicy for all CSI Sidecar images
@@ -184,7 +193,7 @@ csi:
     registrarTag: v2.1.0
 
   controller:
-  # logLevel for the csi controller
+    # logLevel for the csi controller
     logLevel: info
     resources:
       limits:
@@ -220,6 +229,8 @@ csi:
       io_timeout: "30"
       # ctrl_loss_tmo (controller loss timeout) in seconds
       ctrl_loss_tmo: "1980"
+      # kato (keep alive timeout) in seconds
+      keep_alive_tmo: ""
     kubeletDir: /var/lib/kubelet
     pluginMounthPath: /csi
     socketPath: csi.sock
@@ -227,7 +238,7 @@ csi:
 mayastor:
   # logLevel for the core crate and other dependent crates
   logLevel: info,io_engine=info
-  api: "v0"
+  api: "v1"
   target:
     nvmf:
       # NVMF target interface (ip, mac, name or subnet)
@@ -236,7 +247,7 @@ mayastor:
       ptpl: true
   # Pass additional arguments to the Environment Abstraction Layer.
   # as a workaorund for mayastor io-engine on Intel Xeon E-2278G CPU @ 3.40GHz 
-  # Example: --set {proudct}.envcontext=iova-mode=pa
+  # Example: --set {product}.envcontext=iova-mode=pa
   envcontext: ""
   cpuCount: "2"
   # node selectors to designate mayastor nodes for diskpool creation
@@ -293,6 +304,21 @@ etcd:
   # Use a PreStop hook to remove the etcd members from the etcd cluster on container termination
   # Ignored if lifecycleHooks is set or replicaCount=1
   removeMemberOnContainerTermination: false
+
+  # AutoCompaction
+  # Since etcd keeps an exact history of its keyspace, this history should be
+  # periodically compacted to avoid performance degradation
+  # and eventual storage space exhaustion.
+  # Auto compaction mode. Valid values: "periodic", "revision".
+  # - 'periodic' for duration based retention, defaulting to hours if no time unit is provided (e.g. 5m).
+  # - 'revision' for revision number based retention.
+  autoCompactionMode: revision
+  # Auto compaction retention length. 0 means disable auto compaction.
+  autoCompactionRetention: 100
+  extraEnvVars:
+    # Raise alarms when backend size exceeds the given quota.
+    - name: ETCD_QUOTA_BACKEND_BYTES
+      value: "8589934592" # 8GiB
 
   auth:
     rbac:
@@ -365,8 +391,8 @@ loki-stack:
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: File
         volumeMounts:
-        - mountPath: /data
-          name: storage
+          - mountPath: /data
+            name: storage
     config:
       # Compactor is a MayastorDB(loki term) Shipper specific service that reduces the index
       # size by deduping the index and merging all the files to a single file per table.
@@ -414,9 +440,9 @@ loki-stack:
       # The Loki address to post logs to
       lokiAddress: http://{{ .Release.Name }}-loki:3100/loki/api/v1/push
       snippets:
-          # Promtail will export logs to loki only based on based on below
-          # configuration, below scrape config will export only mayastor services
-          # which are labeled with openebs.io/logging=true
+        # Promtail will export logs to loki only based on based on below
+        # configuration, below scrape config will export only mayastor services
+        # which are labeled with openebs.io/logging=true
         scrapeConfigs: |
           - job_name: mayastor-pods-name
             pipeline_stages:
