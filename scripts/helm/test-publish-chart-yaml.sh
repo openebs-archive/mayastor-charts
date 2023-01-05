@@ -18,6 +18,10 @@ DEBUG=${DEBUG:-}
 
 trap "rm '$INDEX_FILE'" HUP QUIT EXIT TERM INT
 
+# Branch to check
+CHECK_BRANCH=
+# Upgrade from develop to release/x.y*
+DEVELOP_TO_REL=
 # Tag that has been pushed
 APP_TAG=
 # Version from the Chart.yaml
@@ -30,16 +34,35 @@ NEW_CHART_VERSION=
 NEW_CHART_APP_VERSION=
 INDEX_CHART_VERSIONS=
 EXPECT_FAIL=
+FAILED=
 
 build_output()
 {
-  cat <<EOF
+  if [ -n "$CHECK_BRANCH" ]; then
+    if [ -n "$DEVELOP_TO_REL" ]; then
+      cat <<EOF
 APP_TAG: $APP_TAG
 CHART_VERSION: $CHART_VERSION
 CHART_APP_VERSION: $CHART_APP_VERSION
 NEW_CHART_VERSION: $NEW_CHART_VERSION
 NEW_CHART_APP_VERSION: $NEW_CHART_APP_VERSION
 EOF
+    else
+      cat <<EOF
+APP_TAG: $APP_TAG
+CHART_VERSION: $CHART_VERSION
+CHART_APP_VERSION: $CHART_APP_VERSION
+EOF
+    fi
+  else
+    cat <<EOF
+APP_TAG: $APP_TAG
+CHART_VERSION: $CHART_VERSION
+CHART_APP_VERSION: $CHART_APP_VERSION
+NEW_CHART_VERSION: $NEW_CHART_VERSION
+NEW_CHART_APP_VERSION: $NEW_CHART_APP_VERSION
+EOF
+  fi
 }
 
 build_index_file()
@@ -58,7 +81,16 @@ EOF
 
 call_script()
 {
-  $SCRIPTDIR/publish-chart-yaml.sh --app-tag "$APP_TAG" --override-chart "$CHART_VERSION" "$CHART_APP_VERSION" --index-file "$INDEX_FILE" --dry-run
+  ARGS="--override-chart "$CHART_VERSION" "$CHART_APP_VERSION" --index-file "$INDEX_FILE" --dry-run"
+  if [ -n "$CHECK_BRANCH" ]; then
+    ARGS="--check-chart $CHECK_BRANCH $ARGS"
+    if [ -n "$DEVELOP_TO_REL" ]; then
+      ARGS="--develop-to-release $ARGS"
+    fi
+  else
+    ARGS="--app-tag $APP_TAG $ARGS"
+  fi
+  $SCRIPTDIR/publish-chart-yaml.sh $ARGS
 }
 
 test_one()
@@ -83,6 +115,7 @@ test_one()
   if [ $_err != 0 ]; then
     if [ -z "$EXPECT_FAIL" ]; then
       echo -e "${PRP}L${NC}$BASH_LINENO${ORANGE} =>${NC} ${RED}FAIL${NC} \$?=$_err"
+      FAILED=1
     else
       echo -e "${PRP}L${NC}$BASH_LINENO${ORANGE} =>${NC} ${GREEN}OK${NC} \$?=$_err"
     fi
@@ -92,11 +125,14 @@ test_one()
       echo -e "${PRP}L${NC}$BASH_LINENO${ORANGE} =>${NC} ${RED}FAIL${NC}"
       echo -e "${ORANGE}Expected:${NC}\n$output"
       echo -e "${ORANGE}Actual:${NC}\n$actual"
+      FAILED=1
     else
       echo -e "${PRP}L${NC}$BASH_LINENO${ORANGE} =>${NC} ${GREEN}OK${NC}"
     fi
   fi
 
+  CHECK_BRANCH=
+  DEVELOP_TO_REL=
   APP_TAG=
   CHART_VERSION=
   CHART_APP_VERSION=
@@ -106,13 +142,52 @@ test_one()
   EXPECT_FAIL=
 }
 
+CHECK_BRANCH=develop
+APP_TAG=0.0.0
+CHART_VERSION=0.0.0
+CHART_APP_VERSION=0.0.0
+test_one "Develop is special"
+
+CHECK_BRANCH=release/2.0
+APP_TAG=2.0.0
+CHART_VERSION=2.0.0
+CHART_APP_VERSION=2.0.0
+test_one "Release branch without patch version"
+
+CHECK_BRANCH=release/2.0.1
+APP_TAG=2.0.1
+CHART_VERSION=2.0.1
+CHART_APP_VERSION=2.0.1
+test_one "Release branch with patch version"
+
+CHECK_BRANCH=release/2
+APP_TAG=2.0.0
+CHART_VERSION=2.0.0
+CHART_APP_VERSION=2.0.0
+EXPECT_FAIL=1
+test_one "Release branch with no minor is not expected"
+
+CHECK_BRANCH=release/2.0.1
+APP_TAG=2.0.1
+CHART_VERSION=2.0.1
+CHART_APP_VERSION=2.0.1
+test_one "Release branch with patch version"
+
+CHECK_BRANCH=release/2.0.1
+DEVELOP_TO_REL=1
+APP_TAG=2.0.1
+CHART_VERSION=0.0.0
+CHART_APP_VERSION=0.0.0
+NEW_CHART_VERSION=2.0.1
+NEW_CHART_APP_VERSION=2.0.1
+test_one "Upgrade from develop to release"
+
 APP_TAG=2.0.0-a.0
 CHART_VERSION=2.0.0
 CHART_APP_VERSION=2.0.0
 INDEX_CHART_VERSIONS=()
 NEW_CHART_VERSION=2.0.0-a.0
 NEW_CHART_APP_VERSION=2.0.0-a.0
-EXPECT_FAIL=
 test_one "Add the first alpha version"
 
 APP_TAG=2.0.0-a.0
@@ -197,3 +272,8 @@ NEW_CHART_APP_VERSION=2.0.0
 test_one "A more stable version is already published, but the app tag stable is new"
 
 echo "Done"
+
+if [ -n "$FAILED" ]; then
+  echo "Test failed"
+  exit 1
+fi

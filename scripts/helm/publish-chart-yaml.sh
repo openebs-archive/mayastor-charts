@@ -36,6 +36,29 @@ version()
   fi
 }
 
+# Get the expected Chart version for the given branch
+# Example:
+# For 'develop', the Chart should be x.0.0-develop
+# For 'release/2.0' the Chart should be 2.0.0
+branch_chart_version()
+{
+  RELEASE_V="${CHECK_BRANCH#release/}"
+  if [ "$CHECK_BRANCH" == "develop" ]; then
+    # Develop has no meaningful version
+    echo "0.0.0"
+  elif [ "$RELEASE_V" != "${CHECK_BRANCH}" ]; then
+    if [ "$(semver validate "$RELEASE_V")" == "valid" ]; then
+      echo "$RELEASE_V"
+    elif  [ "$(semver validate "$RELEASE_V.0")" == "valid" ]; then
+      echo "$RELEASE_V.0"
+    else
+      die "Cannot determine Chart version from branch: $CHECK_BRANCH"
+    fi
+  else
+    die "Cannot determine Chart version from branch: $CHECK_BRANCH"
+  fi
+}
+
 # Get the version non-numeric prerelease prefix, eg:
 # version_prefix 2.0.1-alpha.1 -> 2.0.1-alpha
 version_prefix()
@@ -57,17 +80,33 @@ index_yaml()
   fi
 }
 
+# yq-go eats up blank lines
+# this function gets around that using diff with --ignore-blank-lines
+yq_ibl() {
+  yq_out=$(yq "$1" "$2")
+  set +e
+  diff_out=$(echo "$yq_out" | diff -B "$2" -)
+  error=$?
+  if [ "$error" != "0" ] && [ "$error" != "1" ]; then
+    exit "$error"
+  fi
+  echo "$diff_out" | patch --quiet "$2" -
+  set -euo pipefail
+}
+
 help() {
   cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
-  -d, --dry-run                             Output actions that would be taken, but don't run them.
-  -h, --help                                Display this text.
-  --app-tag        <tag>                    The appVersion tag.
-  --override-index <latest_version>         Override the latest chart version from the published chart's index.
-  --index-file     <index_yaml>             Use the provided index.yaml instead of fetching from the git branch.
-  --override-chart <version> <app_version>  Override the Chart.yaml version and app version.
+  -d, --dry-run                                   Output actions that would be taken, but don't run them.
+  -h, --help                                      Display this text.
+  --check-chart          <branch>                 Check if the chart version/app version is correct for the branch.
+    --develop-to-release                            Also upgrade the chart to the release version matching the branch.
+  --app-tag              <tag>                    The appVersion tag.
+  --override-index       <latest_version>         Override the latest chart version from the published chart's index.
+  --index-file           <index_yaml>             Use the provided index.yaml instead of fetching from the git branch.
+  --override-chart       <version> <app_version>  Override the Chart.yaml version and app version.
 
 Examples:
   $(basename "$0") --app-tag v2.0.0-alpha.0
@@ -78,9 +117,12 @@ SCRIPTDIR="$(dirname "$(realpath "${BASH_SOURCE[0]:-"$0"}")")"
 ROOTDIR="$SCRIPTDIR/../.."
 CHART_FILE=${CHART_FILE:-"$ROOTDIR/chart/Chart.yaml"}
 CHART_VALUES=${CHART_VALUES:-"$ROOTDIR/chart/values.yaml"}
+CHART_DOC=${CHART_DOC:-"$ROOTDIR/chart/doc.yaml"}
 CHART_NAME="mayastor"
 # Tag that has been pushed
 APP_TAG=
+# Check the Chart.yaml for the given branch
+CHECK_BRANCH=
 # Version from the Chart.yaml
 CHART_VERSION=
 # AppVersion from the Chart.yaml
@@ -92,6 +134,7 @@ INDEX_BRANCH="gh-pages"
 INDEX_BRANCH_FILE="index.yaml"
 INDEX_FILE=
 DRY_RUN=
+DEVELOP_TO_REL=
 
 # Check if all needed tools are installed
 semver --version >/dev/null
@@ -107,6 +150,15 @@ while [ "$#" -gt 0 ]; do
     -h|--help)
       help
       exit 0
+      ;;
+    -c|--check-chart)
+      shift
+      CHECK_BRANCH=$1
+      shift
+      ;;
+    --develop-to-release)
+      DEVELOP_TO_REL=1
+      shift
       ;;
     --app-tag)
       shift
@@ -137,10 +189,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ -z "$APP_TAG" ]; then
-  die "--app-tag not specified"
-fi
-
 if [ -n "$INDEX_FILE" ]; then
   test -f "$INDEX_FILE" || die "Index file ($INDEX_FILE) not found"
 fi
@@ -152,9 +200,17 @@ if [ -z "$CHART_APP_VERSION" ]; then
   CHART_APP_VERSION=$(yq '.appVersion' "$CHART_FILE")
 fi
 
-APP_TAG=$(version "$APP_TAG")
 CHART_VERSION=$(version "$CHART_VERSION")
 CHART_APP_VERSION=$(version "$CHART_APP_VERSION")
+
+if [ -n "$CHECK_BRANCH" ]; then
+  APP_TAG=$(branch_chart_version "$CHECK_BRANCH")
+else
+  if [ -z "$APP_TAG" ]; then
+    die "--app-tag not specified"
+  fi
+  APP_TAG=$(version "$APP_TAG")
+fi
 
 echo "APP_TAG: $APP_TAG"
 echo "CHART_VERSION: $CHART_VERSION"
@@ -168,10 +224,34 @@ if ! [[ " ${allowed_diff[*]} " =~ " $diff " ]]; then
   die "Difference($diff) between CHART_VERSION($CHART_VERSION) CHART_APP_VERSION($CHART_APP_VERSION) not allowed!"
 fi
 
+if [ -n "$CHECK_BRANCH" ]; then
+  if [ "$(semver get prerel "$APP_TAG")" != "" ]; then
+    die "Script expects Branch Name($APP_TAG) to point to a stable release"
+  fi
+  if [ -n "$DEVELOP_TO_REL" ]; then
+    if [ "$CHART_VERSION" == "0.0.0" ]; then
+      newChartVersion="$APP_TAG"
+      newChartAppVersion="$APP_TAG"
+      echo "NEW_CHART_VERSION: $newChartVersion"
+      echo "NEW_CHART_APP_VERSION: $newChartAppVersion"
+
+      if [ -z "$DRY_RUN" ]; then
+        sed -i "s/^version:.*$/version: $newChartVersion/" "$CHART_FILE"
+        sed -i "s/^appVersion:.*$/appVersion: \"$newChartAppVersion\"/" "$CHART_FILE"
+        yq_ibl ".image.tag |= \"v$newChartAppVersion\"" "$CHART_VALUES"
+        yq_ibl ".chart.version |= \"$newChartVersion\"" "$CHART_DOC"
+      fi
+    fi
+    exit 0
+  fi
+fi
+
 diff="$(semver diff "$APP_TAG" "$CHART_APP_VERSION")"
 if ! [[ " ${allowed_diff[*]} " =~ " $diff " ]]; then
   die "Difference($diff) between APP_TAG($APP_TAG) CHART_APP_VERSION($CHART_APP_VERSION) not allowed!"
 fi
+
+[ -n "$CHECK_BRANCH" ] && exit 0
 
 if [ "$(semver get prerel "$CHART_VERSION")" != "" ]; then
   die "Script expects CHART_VERSION($CHART_VERSION) to point to the future stable release"
@@ -236,5 +316,6 @@ echo "NEW_CHART_APP_VERSION: $newChartAppVersion"
 if [ -z "$DRY_RUN" ]; then
   sed -i "s/^version:.*$/version: $newChartVersion/" "$CHART_FILE"
   sed -i "s/^appVersion:.*$/appVersion: \"$newChartAppVersion\"/" "$CHART_FILE"
-  yq -i ".image.tag |= \"v$newChartAppVersion\"" "$CHART_VALUES"
+  yq_ibl ".image.tag |= \"v$newChartAppVersion\"" "$CHART_VALUES"
+  yq_ibl ".chart.version |= \"$newChartVersion\"" "$CHART_DOC"
 fi
