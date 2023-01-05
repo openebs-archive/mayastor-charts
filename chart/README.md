@@ -20,7 +20,7 @@ Helm chart for mayastor
 ### Installing the chart
 
 Clone the mayastor charts repo.
-Sync the chart dependencies.
+Sync the chart dependencies
 ```sh
 helm dependency update
 ```
