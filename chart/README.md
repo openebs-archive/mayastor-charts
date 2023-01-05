@@ -24,7 +24,7 @@ Sync the chart dependencies.
 ```sh
 helm dependency update
 ```
-Install the mayastor chart using the command
+Install the mayastor chart using the command.
 ```sh
 helm install mayastor . -n <mayastor-namespace>
 ```
