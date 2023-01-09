@@ -43,18 +43,16 @@ pipeline {
         ])
       }
     }
-    stage('test') {
-      stage('chart publish test') {
-        when {
-          expression { helm_test == true }
-        }
-        agent { label 'nixos-mayastor' }
-        steps {
-          sh 'printenv'
-          sh 'nix-shell --pure --run "./scripts/helm/test-publish-chart-yaml.sh" ./shell.nix'
-        }
+    stage('chart publish test') {
+      when {
+        expression { helm_test == true }
       }
-    }// end of test stage
+      agent { label 'nixos-mayastor' }
+      steps {
+        sh 'printenv'
+        sh 'nix-shell --pure --run "./scripts/helm/test-publish-chart-yaml.sh" ./shell.nix'
+      }
+    }
   }
 
   // The main motivation for post block is that if all stages were skipped
