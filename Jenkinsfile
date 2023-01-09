@@ -57,6 +57,9 @@ pipeline {
           }
         }
       }
+      steps {
+        sh 'printenv'
+      }
     }
     stage('test') {
       when {
