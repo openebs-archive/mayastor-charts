@@ -44,18 +44,16 @@ pipeline {
       }
     }
     stage('test') {
-      parallel {
-        stage('chart publish test') {
-          when {
-            expression { helm_test == true }
-          }
-          agent { label 'nixos-mayastor' }
-          steps {
-            sh 'printenv'
-            sh 'nix-shell --pure --run "./scripts/helm/test-publish-chart-yaml.sh" ./shell.nix'
-          }
+      stage('chart publish test') {
+        when {
+          expression { helm_test == true }
         }
-      }// parallel stages block
+        agent { label 'nixos-mayastor' }
+        steps {
+          sh 'printenv'
+          sh 'nix-shell --pure --run "./scripts/helm/test-publish-chart-yaml.sh" ./shell.nix'
+        }
+      }
     }// end of test stage
   }
 
