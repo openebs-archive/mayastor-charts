@@ -5,8 +5,6 @@ def mainBranches() {
 }
 
 // TODO: Use multiple choices
-run_linter = true
-rust_test = true
 helm_test = true
 run_tests = params.run_tests
 
@@ -22,7 +20,7 @@ String cron_schedule = mainBranches() ? "0 2 * * *" : ""
 pipeline {
   agent none
   options {
-    timeout(time: 1, unit: 'HOURS')
+    timeout(time: 2, unit: 'HOURS')
   }
   parameters {
     booleanParam(defaultValue: true, name: 'run_tests')
@@ -45,32 +43,7 @@ pipeline {
         ])
       }
     }
-    stage('linter') {
-      agent { label 'nixos-mayastor' }
-      when {
-        beforeAgent true
-        not {
-          anyOf {
-            branch 'master'
-            branch 'release/*'
-            expression { run_linter == false }
-          }
-        }
-      }
-      steps {
-        sh 'printenv'
-      }
-    }
     stage('test') {
-      when {
-        beforeAgent true
-        not {
-          anyOf {
-            branch 'master'
-          }
-        }
-        expression { run_tests == true }
-      }
       parallel {
         stage('chart publish test') {
           when {
@@ -79,7 +52,7 @@ pipeline {
           agent { label 'nixos-mayastor' }
           steps {
             sh 'printenv'
-            sh 'nix-shell --pure --run "./scripts/helm/test-publish-chart-yaml.sh" ./scripts/helm/shell.nix'
+            sh 'nix-shell --pure --run "./scripts/helm/test-publish-chart-yaml.sh" ./shell.nix'
           }
         }
       }// parallel stages block
