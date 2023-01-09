@@ -13,11 +13,11 @@ jobs:
         run: |
           export NIX_PATH=nixpkgs=$(jq '.nixpkgs.url' nix/sources.json -r)
           echo "NIX_PATH=$NIX_PATH" >> $GITHUB_ENV
-          nix-shell --pure --run "echo" ./scripts/helm/shell.nix
+          nix-shell --pure --run "echo" ./shell.nix
       - name: Check if the chart is publishable
         run: |
           branch="${{ github.ref_name }}"
-          nix-shell --pure --run "./scripts/helm/publish-chart-yaml.sh --check-chart "$branch" --develop-to-release" ./scripts/helm/shell.nix
+          nix-shell --pure --run "./scripts/helm/publish-chart-yaml.sh --check-chart "$branch" --develop-to-release" ./shell.nix
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:
