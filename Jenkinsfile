@@ -50,7 +50,17 @@ pipeline {
       agent { label 'nixos-mayastor' }
       steps {
         sh 'printenv'
-        sh 'nix-shell --pure --run "./scripts/helm/test-publish-chart-yaml.sh" ./shell.nix'
+        sh 'nix-shell --pure --run "./scripts/helm/test-publish-chart-yaml.sh"'
+      }
+    }
+    stage('chart doc test') {
+      when {
+        expression { helm_test == true }
+      }
+      agent { label 'nixos-mayastor' }
+      steps {
+        sh 'printenv'
+        sh 'nix-shell --pure --run "./scripts/helm/generate-readme.sh"'
       }
     }
   }
