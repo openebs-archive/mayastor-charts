@@ -16,6 +16,7 @@ mkShell {
   buildInputs = [
     commitlint
     git
+    helm-docs
     kubernetes-helm-wrapped
     niv
     pre-commit
