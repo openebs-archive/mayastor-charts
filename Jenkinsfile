@@ -31,7 +31,7 @@ pipeline {
 
   stages {
     stage('init') {
-      agent { label 'nixos-mayastor' }
+      agent any
       steps {
         step([
           $class: 'GitHubSetCommitStatusBuilder',
@@ -47,10 +47,20 @@ pipeline {
       when {
         expression { helm_test == true }
       }
-      agent { label 'nixos-mayastor' }
+      agent any
       steps {
         sh 'printenv'
-        sh 'nix-shell --pure --run "./scripts/helm/test-publish-chart-yaml.sh" ./shell.nix'
+        sh 'nix-shell --pure --run "./scripts/helm/test-publish-chart-yaml.sh"'
+      }
+    }
+    stage('chart doc test') {
+      when {
+        expression { helm_test == true }
+      }
+      agent any
+      steps {
+        sh 'printenv'
+        sh 'nix-shell --pure --run "./scripts/helm/generate-readme.sh"'
       }
     }
   }

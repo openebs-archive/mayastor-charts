@@ -1,0 +1,24 @@
+repos:
+-   repo: https://github.com/nix-community/nixpkgs-fmt
+    rev: v1.2.0
+    hooks:
+    -   id: nixpkgs-fmt
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.0.1
+    hooks:
+    -   id: trailing-whitespace
+-   repo: local
+    hooks:
+    -   id: commit-lint
+        name: Commit Lint
+        description: Runs commitlint against the commit message.
+        language: system
+        entry: bash -c 'nix-shell --pure --run "cat $1 | grep -v '^#' | commitlint"'
+        args: [$1]
+        stages: [commit-msg]
+    -   id: helm-docs
+        name: Helm Docs
+        description: Auto generate the helm docs README.
+        language: system
+        entry: bash -c 'nix-shell --pure --run "./scripts/helm/generate-readme.sh"'
+        types: [file]
